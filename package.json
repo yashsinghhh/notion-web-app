@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.12.0",
+    "@notionhq/client": "^2.2.16",
     "@prisma/client": "^6.4.1",
     "@supabase/supabase-js": "^2.48.1",
     "next": "15.1.7",
