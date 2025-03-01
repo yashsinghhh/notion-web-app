@@ -51,8 +51,8 @@ function extractRichTextContent(richTexts: any[]): string {
 async function fetchNotionPage(id: string): Promise<NotionPageDetails | null> {
   try {
     // Type assertion to ensure we're working with a full page response
-    const pageResponse = await notion.pages.retrieve({ 
-      page_id: id 
+    const pageResponse = await notion.pages.retrieve({
+      page_id: id
     }) as PageObjectResponse;
 
     // Retrieve page content blocks
@@ -100,7 +100,7 @@ async function fetchNotionPage(id: string): Promise<NotionPageDetails | null> {
         }
       })
       // Type guard to ensure only non-null blocks with content are included
-      .filter((block): block is { type: string; content: string } => 
+      .filter((block): block is { type: string; content: string } =>
         block !== null && block.content.trim() !== ""
       );
 
@@ -119,7 +119,7 @@ async function fetchNotionPage(id: string): Promise<NotionPageDetails | null> {
 export default async function NotionPageDetail({ params }: { params: { id: string } }) {
   // Validate params
   const pageId = params.id;
-  
+
   if (!pageId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -140,28 +140,46 @@ export default async function NotionPageDetail({ params }: { params: { id: strin
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* User button and back navigation */}
-      <div className="absolute top-4 right-4 flex items-center space-x-4">
-        <Link href="/" className="text-blue-600 hover:text-blue-800 hover:underline">
-          Back to Pages
-        </Link>
-        <UserButton afterSignOutUrl="/sign-in" />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 selection:bg-blue-200 selection:text-blue-900">
+      {/* Navigation and User Section */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white/75 backdrop-blur-md shadow-sm">
+        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+          <Link 
+            href="/" 
+            className="text-blue-600 hover:text-blue-800 transition-colors flex items-center space-x-2 group"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-5 w-5 group-hover:-translate-x-1 transition-transform" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span>Back to Pages</span>
+          </Link>
+          
+          <div className="flex items-center space-x-4">
+            <UserButton afterSignOutUrl="/sign-in" />
+          </div>
+        </div>
       </div>
 
-      <main className="container mx-auto px-4 py-16 max-w-3xl">
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-24 max-w-3xl">
         {/* Page Header */}
-        <header className="mb-12">
+        <header className="mb-12 animate-fade-in-up">
           {/* Author Info */}
           {pageDetails.people && pageDetails.people.length > 0 && (
-            <div className="flex items-center mb-4">
+            <div className="flex items-center mb-6">
               {pageDetails.people[0].avatar_url && (
                 <Image
                   src={pageDetails.people[0].avatar_url}
                   alt={pageDetails.people[0].name}
-                  width={48}
-                  height={48}
-                  className="rounded-full mr-4 object-cover"
+                  width={56}
+                  height={56}
+                  className="rounded-full mr-5 border-2 border-blue-100 shadow-md"
                   style={{
                     aspectRatio: "1/1",
                     objectFit: "cover",
@@ -169,12 +187,12 @@ export default async function NotionPageDetail({ params }: { params: { id: strin
                 />
               )}
               <div>
-                <h1 className="text-4xl font-bold text-gray-900">
+                <h1 className="text-4xl font-bold text-gray-900 mb-2 leading-tight">
                   {pageDetails["Pages "] || "Untitled Page"}
                 </h1>
-                <p className="text-gray-600">
+                <p className="text-gray-600 text-sm">
                   Created by {pageDetails.people?.[0]?.name || "Unknown"}{" "}
-                  {pageDetails.Date && ` on ${pageDetails.Date}`}
+                  {pageDetails.Date && `on ${pageDetails.Date}`}
                 </p>
               </div>
             </div>
@@ -182,41 +200,50 @@ export default async function NotionPageDetail({ params }: { params: { id: strin
 
           {/* Description */}
           {pageDetails.Description && (
-            <p className="text-xl text-gray-800 mt-4 italic">
+            <p className="text-xl text-gray-700 italic border-l-4 border-blue-500 pl-4 py-2 bg-blue-50/50">
               {pageDetails.Description}
             </p>
           )}
         </header>
 
         {/* Page Content */}
-        <article className="prose max-w-none">
+        <article className="prose max-w-none text-gray-800 space-y-4 animate-fade-in-up delay-200">
           {pageDetails.blocks.map((block, index) => {
             switch (block.type) {
               case "heading_1":
-                return <h1 key={index}>{block.content}</h1>;
+                return <h1 key={index} className="text-3xl font-bold text-gray-900 mt-8 mb-4 border-b pb-2">{block.content}</h1>;
               case "heading_2":
-                return <h2 key={index}>{block.content}</h2>;
+                return <h2 key={index} className="text-2xl font-semibold text-gray-800 mt-6 mb-3">{block.content}</h2>;
               case "heading_3":
-                return <h3 key={index}>{block.content}</h3>;
+                return <h3 key={index} className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
               case "bulleted_list_item":
-                return <li key={index} className="list-disc ml-6">{block.content}</li>;
+                return <li key={index} className="list-disc ml-6 text-gray-700">{block.content}</li>;
               case "numbered_list_item":
-                return <li key={index} className="list-decimal ml-6">{block.content}</li>;
+                return <li key={index} className="list-decimal ml-6 text-gray-700">{block.content}</li>;
               default:
-                return <p key={index}>{block.content}</p>;
+                return <p key={index} className="text-base leading-relaxed">{block.content}</p>;
             }
           })}
         </article>
 
         {/* External Notion Link */}
-        <div className="mt-8 text-center">
-          <a 
-            href={pageDetails.url} 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="text-blue-600 hover:text-blue-800 hover:underline"
+        <div className="mt-12 text-center animate-fade-in-up delay-500">
+          <a
+            href={pageDetails.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors group"
           >
-            View Original in Notion
+            <span>View Original in Notion</span>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-4 w-4 group-hover:translate-x-1 transition-transform" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
           </a>
         </div>
       </main>
