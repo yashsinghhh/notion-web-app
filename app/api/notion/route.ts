@@ -7,6 +7,35 @@ const notion = new Client({
   auth: process.env.NOTION_API_KEY
 });
 
+// Helper function to extract page title
+function extractPageTitle(properties: Record<string, any>): string | null {
+  // Try multiple property types that could represent the page title
+  const possibleTitleKeys = ['Pages', 'Pages ', 'Name', 'Title'];
+  
+  for (const key of possibleTitleKeys) {
+    const prop = properties[key];
+    
+    if (!prop) continue;
+
+    // Handle different property types
+    switch (prop.type) {
+      case 'title':
+        return prop.title[0]?.plain_text || null;
+      case 'rich_text':
+        return prop.rich_text[0]?.plain_text || null;
+      case 'select':
+        return prop.select?.name || null;
+      case 'multi_select':
+        return prop.multi_select?.[0]?.name || null;
+      default:
+        // If it's a direct string or value
+        if (typeof prop === 'string') return prop;
+    }
+  }
+
+  return null;
+}
+
 export async function GET() {
   try {
     // Replace with your actual Notion database ID
@@ -61,6 +90,9 @@ export async function GET() {
         }
       });
 
+      // Extract page title
+      const pageTitle = extractPageTitle(properties);
+
       // Fetch full page content
       let pageContent = null;
       try {
@@ -106,6 +138,7 @@ export async function GET() {
       return {
         id: page.id,
         url: page.url,
+        pageTitle, // Use the extracted page title
         ...properties,
         content: pageContent
       };

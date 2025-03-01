@@ -3,6 +3,7 @@ import { UserButton } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
 import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
+import PageActions from './page-actions';
 
 // Define a more flexible interface for page details
 interface NotionPageDetails {
@@ -226,26 +227,8 @@ export default async function NotionPageDetail({ params }: { params: { id: strin
           })}
         </article>
 
-        {/* External Notion Link */}
-        <div className="mt-12 text-center animate-fade-in-up delay-500">
-          <a
-            href={pageDetails.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors group"
-          >
-            <span>View Original in Notion</span>
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              className="h-4 w-4 group-hover:translate-x-1 transition-transform" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-            </svg>
-          </a>
-        </div>
+        {/* Page Actions */}
+        <PageActions pageId={pageDetails.id} notionUrl={pageDetails.url} />
       </main>
     </div>
   );
