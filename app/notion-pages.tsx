@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 
-interface NotionPage {
+export interface NotionPage {
   id: string;
   url: string;
   Description: string;
@@ -67,63 +68,54 @@ export default function NotionPages() {
         {pages.map((page) => (
           <div 
             key={page.id} 
-            className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow border border-gray-200"
+            className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow border border-gray-200 flex justify-between items-center"
           >
-            {/* Page Title and Author */}
-            <div className="flex items-center mb-4">
-              {/* Author Avatar */}
-              {page.author && page.author.length > 0 && (
-                <div className="mr-4">
-                  <Image 
-                    src={page.author[0].avatar_url} 
-                    alt={page.author[0].name} 
-                    width={48}  // Increased size
-                    height={48} 
-                    className="rounded-full object-cover"  // Ensures round shape
-                    style={{ 
-                      aspectRatio: '1/1',  // Force square aspect ratio
-                      objectFit: 'cover'   // Cover the entire area
-                    }}
-                  />
+            <div>
+              {/* Page Title and Author */}
+              <div className="flex items-center mb-4">
+                {/* Author Avatar */}
+                {page.author && page.author.length > 0 && (
+                  <div className="mr-4">
+                    <Image 
+                      src={page.author[0].avatar_url} 
+                      alt={page.author[0].name} 
+                      width={48}
+                      height={48} 
+                      className="rounded-full object-cover"
+                      style={{ 
+                        aspectRatio: '1/1',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {/* Page Title */}
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    {page['Pages '] || 'Untitled Page'}
+                  </h2>
+                  <p className="text-gray-600 text-sm">
+                    Created by {page.author?.[0]?.name || 'Unknown'} on {page.Date}
+                  </p>
                 </div>
-              )}
-              
-              {/* Page Title */}
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {page['Pages '] || 'Untitled Page'}
-                </h2>
-                <p className="text-gray-600 text-sm">
-                  Created by {page.author?.[0]?.name || 'Unknown'} on {page.Date}
-                </p>
               </div>
+
+              {/* Description */}
+              {page.Description && (
+                <p className="text-gray-800 mb-4 font-medium">
+                  {page.Description}
+                </p>
+              )}
             </div>
 
-            {/* Description */}
-            {page.Description && (
-              <p className="text-gray-800 mb-4 font-medium">
-                {page.Description}
-              </p>
-            )}
-
-            {/* Page Content */}
-            {page.content && (
-              <div className="prose max-w-none text-gray-700">
-                {page.content.blocks.map((block, index) => (
-                  <p key={index} className="mb-2">{block}</p>
-                ))}
-              </div>
-            )}
-
-            {/* Link to Notion Page */}
-            <a 
-              href={page.url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="text-blue-600 hover:text-blue-800 hover:underline mt-4 inline-block font-semibold"
+            {/* Read Post Button */}
+            <Link 
+              href={`/notion/${page.id}`} 
+              className="text-blue-600 hover:text-blue-800 hover:underline font-semibold px-4 py-2 rounded-md border border-blue-600 hover:border-blue-800 transition-colors"
             >
-              View in Notion
-            </a>
+              Read Post
+            </Link>
           </div>
         ))}
       </div>
