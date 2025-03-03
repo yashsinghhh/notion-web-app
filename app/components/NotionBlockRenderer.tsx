@@ -23,9 +23,31 @@ export default function NotionBlockRenderer({ block }: BlockProps) {
     case "heading_3":
       return <h3 className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
     case "bulleted_list_item":
-      return <li className="list-disc ml-6 text-gray-700">{block.content}</li>;
+      return (
+        <div>
+          <li className="list-disc ml-6 text-gray-700">{block.content}</li>
+          {block.children && block.children.length > 0 && (
+            <div className="ml-8 mt-1">
+              {block.children.map((childBlock, idx) => (
+                <NotionBlockRenderer key={idx} block={childBlock} />
+              ))}
+            </div>
+          )}
+        </div>
+      );
     case "numbered_list_item":
-      return <li className="list-decimal ml-6 text-gray-700">{block.content}</li>;
+      return (
+        <div>
+          <li className="list-decimal ml-6 text-gray-700">{block.content}</li>
+          {block.children && block.children.length > 0 && (
+            <div className="ml-8 mt-1">
+              {block.children.map((childBlock, idx) => (
+                <NotionBlockRenderer key={idx} block={childBlock} />
+              ))}
+            </div>
+          )}
+        </div>
+      );
     case "toggle":
       return (
         <NotionToggle header={block.content}>

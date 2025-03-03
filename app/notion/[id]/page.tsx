@@ -103,7 +103,17 @@ async function processBlocks(blockId: string): Promise<any[]> {
         if ('bulleted_list_item' in block) {
           const content = extractRichTextContent(block.bulleted_list_item.rich_text);
           if (content) {
-            processedBlock = { type: "bulleted_list_item", content };
+            let children = [];
+            // Process children if they exist
+            if (block.has_children) {
+              children = await processBlocks(block.id);
+            }
+            
+            processedBlock = { 
+              type: "bulleted_list_item", 
+              content,
+              ...(children.length > 0 ? { children } : {})
+            };
           }
         }
         break;
@@ -112,7 +122,17 @@ async function processBlocks(blockId: string): Promise<any[]> {
         if ('numbered_list_item' in block) {
           const content = extractRichTextContent(block.numbered_list_item.rich_text);
           if (content) {
-            processedBlock = { type: "numbered_list_item", content };
+            let children = [];
+            // Process children if they exist
+            if (block.has_children) {
+              children = await processBlocks(block.id);
+            }
+            
+            processedBlock = { 
+              type: "numbered_list_item", 
+              content,
+              ...(children.length > 0 ? { children } : {})
+            };
           }
         }
         break;

@@ -70,63 +70,7 @@ async function extractToggleContent(block: BlockObjectResponse): Promise<any> {
       
       // Process each child block
       for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
-        let childContent;
-        
-        // Process the child based on its type
-        switch(childBlock.type) {
-          case 'paragraph':
-            if ('paragraph' in childBlock) {
-              childContent = {
-                type: 'paragraph',
-                content: getRichTextContent(childBlock.paragraph.rich_text)
-              };
-            }
-            break;
-          case 'heading_1':
-            if ('heading_1' in childBlock) {
-              childContent = {
-                type: 'heading_1',
-                content: getRichTextContent(childBlock.heading_1.rich_text)
-              };
-            }
-            break;
-          case 'heading_2':
-            if ('heading_2' in childBlock) {
-              childContent = {
-                type: 'heading_2',
-                content: getRichTextContent(childBlock.heading_2.rich_text)
-              };
-            }
-            break;
-          case 'heading_3':
-            if ('heading_3' in childBlock) {
-              childContent = {
-                type: 'heading_3',
-                content: getRichTextContent(childBlock.heading_3.rich_text)
-              };
-            }
-            break;
-          case 'bulleted_list_item':
-            if ('bulleted_list_item' in childBlock) {
-              childContent = {
-                type: 'bulleted_list_item',
-                content: getRichTextContent(childBlock.bulleted_list_item.rich_text)
-              };
-            }
-            break;
-          case 'numbered_list_item':
-            if ('numbered_list_item' in childBlock) {
-              childContent = {
-                type: 'numbered_list_item',
-                content: getRichTextContent(childBlock.numbered_list_item.rich_text)
-              };
-            }
-            break;
-          case 'toggle':
-            // Recursively process nested toggles
-            childContent = await extractToggleContent(childBlock);
-            break;
-        }
+        let childContent = await extractBlockContent(childBlock);
         
         if (childContent && (typeof childContent === 'object' ? 
             (childContent.content && childContent.content.trim() !== '') : 
@@ -144,6 +88,86 @@ async function extractToggleContent(block: BlockObjectResponse): Promise<any> {
     type: 'toggle',
     content: headerText,
     children: children
+  };
+}
+
+// Function to handle numbered list items with children
+async function extractNumberedListItemContent(block: BlockObjectResponse): Promise<any> {
+  if (block.type !== 'numbered_list_item' || !('numbered_list_item' in block)) {
+    return null;
+  }
+  
+  // Get the list item text
+  const itemText = getRichTextContent(block.numbered_list_item.rich_text);
+  
+  // Initialize children array
+  const children = [];
+  
+  // Fetch child blocks if they exist
+  if (block.has_children) {
+    try {
+      const childBlocksResponse = await notion.blocks.children.list({
+        block_id: block.id,
+        page_size: 100
+      });
+      
+      // Process each child block
+      for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
+        const childContent = await extractBlockContent(childBlock);
+        if (childContent) {
+          children.push(childContent);
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching numbered list item children for block ${block.id}:`, error);
+    }
+  }
+  
+  // Return structured numbered list item data
+  return {
+    type: 'numbered_list_item',
+    content: itemText,
+    children: children.length > 0 ? children : undefined
+  };
+}
+
+// Function to handle bulleted list items with children
+async function extractBulletedListItemContent(block: BlockObjectResponse): Promise<any> {
+  if (block.type !== 'bulleted_list_item' || !('bulleted_list_item' in block)) {
+    return null;
+  }
+  
+  // Get the list item text
+  const itemText = getRichTextContent(block.bulleted_list_item.rich_text);
+  
+  // Initialize children array
+  const children = [];
+  
+  // Fetch child blocks if they exist
+  if (block.has_children) {
+    try {
+      const childBlocksResponse = await notion.blocks.children.list({
+        block_id: block.id,
+        page_size: 100
+      });
+      
+      // Process each child block
+      for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
+        const childContent = await extractBlockContent(childBlock);
+        if (childContent) {
+          children.push(childContent);
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching bulleted list item children for block ${block.id}:`, error);
+    }
+  }
+  
+  // Return structured bulleted list item data
+  return {
+    type: 'bulleted_list_item',
+    content: itemText,
+    children: children.length > 0 ? children : undefined
   };
 }
 
@@ -189,18 +213,28 @@ async function extractBlockContent(block: BlockObjectResponse | PartialBlockObje
       break;
     case 'bulleted_list_item':
       if ('bulleted_list_item' in block) {
-        return {
-          type: 'bulleted_list_item',
-          content: getRichTextContent(block.bulleted_list_item.rich_text)
-        };
+        // Use the new function for bulleted list items with children
+        if (block.has_children) {
+          return await extractBulletedListItemContent(block as BlockObjectResponse);
+        } else {
+          return {
+            type: 'bulleted_list_item',
+            content: getRichTextContent(block.bulleted_list_item.rich_text)
+          };
+        }
       }
       break;
     case 'numbered_list_item':
       if ('numbered_list_item' in block) {
-        return {
-          type: 'numbered_list_item',
-          content: getRichTextContent(block.numbered_list_item.rich_text)
-        };
+        // Use the new function for numbered list items with children
+        if (block.has_children) {
+          return await extractNumberedListItemContent(block as BlockObjectResponse);
+        } else {
+          return {
+            type: 'numbered_list_item',
+            content: getRichTextContent(block.numbered_list_item.rich_text)
+          };
+        }
       }
       break;
     case 'toggle':
@@ -304,6 +338,9 @@ export async function GET() {
         const extractFullText = (blocks: any[]): string => {
           return blocks.map(block => {
             if (block.type === 'toggle' && block.children) {
+              return block.content + '\n' + extractFullText(block.children);
+            }
+            if ((block.type === 'numbered_list_item' || block.type === 'bulleted_list_item') && block.children) {
               return block.content + '\n' + extractFullText(block.children);
             }
             return block.content;
