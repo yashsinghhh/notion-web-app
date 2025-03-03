@@ -36,6 +36,74 @@ function extractPageTitle(properties: Record<string, any>): string | null {
   return null;
 }
 
+// Recursive function to extract text from toggle blocks
+function extractToggleContent(block: any): string[] {
+  const contents: string[] = [];
+
+  // Extract text from toggle itself
+  if (block.type === 'toggle') {
+    const toggleText = block.toggle.rich_text
+      .map((text: any) => text.plain_text)
+      .join('');
+    
+    contents.push(toggleText);
+
+    // Recursively process child blocks
+    if (block.toggle.children) {
+      block.toggle.children.forEach((childBlock: any) => {
+        contents.push(...extractBlockContent(childBlock));
+      });
+    }
+  }
+
+  return contents;
+}
+
+// Helper function to extract content from different block types
+function extractBlockContent(block: any): string[] {
+  const contents: string[] = [];
+
+  switch(block.type) {
+    case 'paragraph':
+      contents.push(
+        block.paragraph.rich_text
+          .map((text: any) => text.plain_text)
+          .join('')
+      );
+      break;
+    case 'heading_1':
+      contents.push(
+        `# ${block.heading_1.rich_text.map((text: any) => text.plain_text).join('')}`
+      );
+      break;
+    case 'heading_2':
+      contents.push(
+        `## ${block.heading_2.rich_text.map((text: any) => text.plain_text).join('')}`
+      );
+      break;
+    case 'heading_3':
+      contents.push(
+        `### ${block.heading_3.rich_text.map((text: any) => text.plain_text).join('')}`
+      );
+      break;
+    case 'bulleted_list_item':
+      contents.push(
+        `- ${block.bulleted_list_item.rich_text.map((text: any) => text.plain_text).join('')}`
+      );
+      break;
+    case 'numbered_list_item':
+      contents.push(
+        `1. ${block.numbered_list_item.rich_text.map((text: any) => text.plain_text).join('')}`
+      );
+      break;
+    case 'toggle':
+      contents.push(...extractToggleContent(block));
+      break;
+  }
+
+  return contents;
+}
+
 export async function GET() {
   try {
     // Replace with your actual Notion database ID
@@ -107,25 +175,9 @@ export async function GET() {
         });
 
         // Transform blocks to readable text
-        const blockContents = blocksResponse.results.map((block: any) => {
-          // Handle different block types
-          switch(block.type) {
-            case 'paragraph':
-              return block.paragraph.rich_text.map((text: any) => text.plain_text).join('');
-            case 'heading_1':
-              return `# ${block.heading_1.rich_text.map((text: any) => text.plain_text).join('')}`;
-            case 'heading_2':
-              return `## ${block.heading_2.rich_text.map((text: any) => text.plain_text).join('')}`;
-            case 'heading_3':
-              return `### ${block.heading_3.rich_text.map((text: any) => text.plain_text).join('')}`;
-            case 'bulleted_list_item':
-              return `- ${block.bulleted_list_item.rich_text.map((text: any) => text.plain_text).join('')}`;
-            case 'numbered_list_item':
-              return `1. ${block.numbered_list_item.rich_text.map((text: any) => text.plain_text).join('')}`;
-            default:
-              return ''; // Ignore other block types or add more as needed
-          }
-        }).filter((content: string) => content.trim() !== '');
+        const blockContents = blocksResponse.results
+          .flatMap(extractBlockContent)
+          .filter((content: string) => content.trim() !== '');
 
         pageContent = {
           blocks: blockContents,
