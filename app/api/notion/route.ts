@@ -1,6 +1,11 @@
 // app/api/notion/route.ts
 import { Client } from '@notionhq/client';
 import { NextResponse } from 'next/server';
+import { 
+  BlockObjectResponse, 
+  PartialBlockObjectResponse,
+  RichTextItemResponse
+} from '@notionhq/client/build/src/api-endpoints';
 
 // Initialize Notion client
 const notion = new Client({
@@ -36,72 +41,182 @@ function extractPageTitle(properties: Record<string, any>): string | null {
   return null;
 }
 
+// Helper to safely access rich text content from blocks
+function getRichTextContent(richTextArray: RichTextItemResponse[] | undefined): string {
+  if (!richTextArray || !Array.isArray(richTextArray)) return '';
+  return richTextArray.map(text => text.plain_text || '').join('');
+}
+
 // Recursive function to extract text from toggle blocks
-function extractToggleContent(block: any): string[] {
-  const contents: string[] = [];
-
-  // Extract text from toggle itself
-  if (block.type === 'toggle') {
-    const toggleText = block.toggle.rich_text
-      .map((text: any) => text.plain_text)
-      .join('');
-    
-    contents.push(toggleText);
-
-    // Recursively process child blocks
-    if (block.toggle.children) {
-      block.toggle.children.forEach((childBlock: any) => {
-        contents.push(...extractBlockContent(childBlock));
+async function extractToggleContent(block: BlockObjectResponse): Promise<any> {
+  // Type check to ensure we're dealing with a toggle block
+  if (block.type !== 'toggle' || !('toggle' in block)) {
+    return null;
+  }
+  
+  // Get the toggle header text
+  const headerText = getRichTextContent(block.toggle.rich_text);
+  
+  // Initialize children array
+  const children = [];
+  
+  // Fetch child blocks if they exist
+  if (block.has_children) {
+    try {
+      const childBlocksResponse = await notion.blocks.children.list({
+        block_id: block.id,
+        page_size: 100
       });
+      
+      // Process each child block
+      for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
+        let childContent;
+        
+        // Process the child based on its type
+        switch(childBlock.type) {
+          case 'paragraph':
+            if ('paragraph' in childBlock) {
+              childContent = {
+                type: 'paragraph',
+                content: getRichTextContent(childBlock.paragraph.rich_text)
+              };
+            }
+            break;
+          case 'heading_1':
+            if ('heading_1' in childBlock) {
+              childContent = {
+                type: 'heading_1',
+                content: getRichTextContent(childBlock.heading_1.rich_text)
+              };
+            }
+            break;
+          case 'heading_2':
+            if ('heading_2' in childBlock) {
+              childContent = {
+                type: 'heading_2',
+                content: getRichTextContent(childBlock.heading_2.rich_text)
+              };
+            }
+            break;
+          case 'heading_3':
+            if ('heading_3' in childBlock) {
+              childContent = {
+                type: 'heading_3',
+                content: getRichTextContent(childBlock.heading_3.rich_text)
+              };
+            }
+            break;
+          case 'bulleted_list_item':
+            if ('bulleted_list_item' in childBlock) {
+              childContent = {
+                type: 'bulleted_list_item',
+                content: getRichTextContent(childBlock.bulleted_list_item.rich_text)
+              };
+            }
+            break;
+          case 'numbered_list_item':
+            if ('numbered_list_item' in childBlock) {
+              childContent = {
+                type: 'numbered_list_item',
+                content: getRichTextContent(childBlock.numbered_list_item.rich_text)
+              };
+            }
+            break;
+          case 'toggle':
+            // Recursively process nested toggles
+            childContent = await extractToggleContent(childBlock);
+            break;
+        }
+        
+        if (childContent && (typeof childContent === 'object' ? 
+            (childContent.content && childContent.content.trim() !== '') : 
+            childContent.trim() !== '')) {
+          children.push(childContent);
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching toggle children for block ${block.id}:`, error);
     }
   }
-
-  return contents;
+  
+  // Return structured toggle data
+  return {
+    type: 'toggle',
+    content: headerText,
+    children: children
+  };
 }
 
 // Helper function to extract content from different block types
-function extractBlockContent(block: any): string[] {
-  const contents: string[] = [];
-
+async function extractBlockContent(block: BlockObjectResponse | PartialBlockObjectResponse): Promise<any> {
+  // Handle partial blocks
+  if (!('type' in block)) {
+    return null;
+  }
+  
   switch(block.type) {
     case 'paragraph':
-      contents.push(
-        block.paragraph.rich_text
-          .map((text: any) => text.plain_text)
-          .join('')
-      );
+      if ('paragraph' in block) {
+        return {
+          type: 'paragraph',
+          content: getRichTextContent(block.paragraph.rich_text)
+        };
+      }
       break;
     case 'heading_1':
-      contents.push(
-        `# ${block.heading_1.rich_text.map((text: any) => text.plain_text).join('')}`
-      );
+      if ('heading_1' in block) {
+        return {
+          type: 'heading_1',
+          content: getRichTextContent(block.heading_1.rich_text)
+        };
+      }
       break;
     case 'heading_2':
-      contents.push(
-        `## ${block.heading_2.rich_text.map((text: any) => text.plain_text).join('')}`
-      );
+      if ('heading_2' in block) {
+        return {
+          type: 'heading_2',
+          content: getRichTextContent(block.heading_2.rich_text)
+        };
+      }
       break;
     case 'heading_3':
-      contents.push(
-        `### ${block.heading_3.rich_text.map((text: any) => text.plain_text).join('')}`
-      );
+      if ('heading_3' in block) {
+        return {
+          type: 'heading_3',
+          content: getRichTextContent(block.heading_3.rich_text)
+        };
+      }
       break;
     case 'bulleted_list_item':
-      contents.push(
-        `- ${block.bulleted_list_item.rich_text.map((text: any) => text.plain_text).join('')}`
-      );
+      if ('bulleted_list_item' in block) {
+        return {
+          type: 'bulleted_list_item',
+          content: getRichTextContent(block.bulleted_list_item.rich_text)
+        };
+      }
       break;
     case 'numbered_list_item':
-      contents.push(
-        `1. ${block.numbered_list_item.rich_text.map((text: any) => text.plain_text).join('')}`
-      );
+      if ('numbered_list_item' in block) {
+        return {
+          type: 'numbered_list_item',
+          content: getRichTextContent(block.numbered_list_item.rich_text)
+        };
+      }
       break;
     case 'toggle':
-      contents.push(...extractToggleContent(block));
+      if ('toggle' in block) {
+        return await extractToggleContent(block as BlockObjectResponse);
+      }
       break;
+    default:
+      // For unsupported block types, return a basic object
+      return {
+        type: block.type,
+        content: 'Unsupported block type: ' + block.type
+      };
   }
-
-  return contents;
+  
+  return null;
 }
 
 export async function GET() {
@@ -174,14 +289,30 @@ export async function GET() {
           page_size: 100 // Adjust as needed
         });
 
-        // Transform blocks to readable text
-        const blockContents = blocksResponse.results
-          .flatMap(extractBlockContent)
-          .filter((content: string) => content.trim() !== '');
+        // Process blocks with async support
+        const blockContentsPromises = blocksResponse.results
+          .map(block => extractBlockContent(block as BlockObjectResponse));
+        
+        // Wait for all block processing to complete
+        const blockContents = (await Promise.all(blockContentsPromises))
+          .filter(content => content !== null && 
+            (typeof content.content === 'string' ? 
+              content.content.trim() !== '' : true));
+        
+        // Generate a simple fullText for search purposes
+        // This is a flattened version of all text content
+        const extractFullText = (blocks: any[]): string => {
+          return blocks.map(block => {
+            if (block.type === 'toggle' && block.children) {
+              return block.content + '\n' + extractFullText(block.children);
+            }
+            return block.content;
+          }).join('\n');
+        };
 
         pageContent = {
           blocks: blockContents,
-          fullText: blockContents.join('\n')
+          fullText: extractFullText(blockContents)
         };
       } catch (contentError) {
         console.error(`Error fetching content for page ${page.id}:`, contentError);

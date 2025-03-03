@@ -2,8 +2,9 @@ import { Client } from "@notionhq/client";
 import { UserButton } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
-import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
+import { PageObjectResponse, BlockObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import PageActions from './page-actions';
+import NotionBlockRenderer from "../../components/NotionBlockRenderer";
 
 // Define a more flexible interface for page details
 interface NotionPageDetails {
@@ -12,6 +13,7 @@ interface NotionPageDetails {
   blocks: Array<{
     type: string;
     content: string;
+    children?: Array<any>; // Add support for nested children
   }>;
   [key: string]: any; // Allow additional dynamic properties
 }
@@ -48,6 +50,103 @@ function extractRichTextContent(richTexts: any[]): string {
   return richTexts.map((text: any) => text.plain_text || '').join('').trim();
 }
 
+// Recursive function to process blocks including toggles
+async function processBlocks(blockId: string): Promise<any[]> {
+  const blocksResponse = await notion.blocks.children.list({
+    block_id: blockId,
+    page_size: 100,
+  });
+  
+  const processedBlocks = [];
+  
+  for (const block of blocksResponse.results as BlockObjectResponse[]) {
+    let processedBlock = null;
+    
+    switch (block.type) {
+      case "paragraph": {
+        if ('paragraph' in block) {
+          const content = extractRichTextContent(block.paragraph.rich_text);
+          if (content) {
+            processedBlock = { type: "paragraph", content };
+          }
+        }
+        break;
+      }
+      case "heading_1": {
+        if ('heading_1' in block) {
+          const content = extractRichTextContent(block.heading_1.rich_text);
+          if (content) {
+            processedBlock = { type: "heading_1", content };
+          }
+        }
+        break;
+      }
+      case "heading_2": {
+        if ('heading_2' in block) {
+          const content = extractRichTextContent(block.heading_2.rich_text);
+          if (content) {
+            processedBlock = { type: "heading_2", content };
+          }
+        }
+        break;
+      }
+      case "heading_3": {
+        if ('heading_3' in block) {
+          const content = extractRichTextContent(block.heading_3.rich_text);
+          if (content) {
+            processedBlock = { type: "heading_3", content };
+          }
+        }
+        break;
+      }
+      case "bulleted_list_item": {
+        if ('bulleted_list_item' in block) {
+          const content = extractRichTextContent(block.bulleted_list_item.rich_text);
+          if (content) {
+            processedBlock = { type: "bulleted_list_item", content };
+          }
+        }
+        break;
+      }
+      case "numbered_list_item": {
+        if ('numbered_list_item' in block) {
+          const content = extractRichTextContent(block.numbered_list_item.rich_text);
+          if (content) {
+            processedBlock = { type: "numbered_list_item", content };
+          }
+        }
+        break;
+      }
+      case "toggle": {
+        if ('toggle' in block) {
+          const headerContent = extractRichTextContent(block.toggle.rich_text);
+          if (headerContent) {
+            // Recursively process children if toggle has children
+            let children = [];
+            if (block.has_children) {
+              children = await processBlocks(block.id);
+            }
+            
+            processedBlock = { 
+              type: "toggle", 
+              content: headerContent,
+              children: children
+            };
+          }
+        }
+        break;
+      }
+      // Add other block types as needed
+    }
+    
+    if (processedBlock) {
+      processedBlocks.push(processedBlock);
+    }
+  }
+  
+  return processedBlocks;
+}
+
 // Fetch Notion Page Details (Helper Function)
 async function fetchNotionPage(id: string): Promise<NotionPageDetails | null> {
   try {
@@ -56,55 +155,15 @@ async function fetchNotionPage(id: string): Promise<NotionPageDetails | null> {
       page_id: id
     }) as PageObjectResponse;
 
-    // Retrieve page content blocks
-    const blocksResponse = await notion.blocks.children.list({
-      block_id: id,
-      page_size: 100, // Adjust as needed
-    });
-
     // Extract properties dynamically
     const properties: Record<string, any> = {};
     Object.entries(pageResponse.properties).forEach(([key, prop]) => {
       properties[key] = extractPropertyValue(prop);
     });
 
-    // Transform blocks to detailed content with strict type checking
-    const blockContents = blocksResponse.results
-      .map((block: any) => {
-        switch (block.type) {
-          case "paragraph": {
-            const content = extractRichTextContent(block.paragraph.rich_text);
-            return content ? { type: "paragraph", content } : null;
-          }
-          case "heading_1": {
-            const content = extractRichTextContent(block.heading_1.rich_text);
-            return content ? { type: "heading_1", content } : null;
-          }
-          case "heading_2": {
-            const content = extractRichTextContent(block.heading_2.rich_text);
-            return content ? { type: "heading_2", content } : null;
-          }
-          case "heading_3": {
-            const content = extractRichTextContent(block.heading_3.rich_text);
-            return content ? { type: "heading_3", content } : null;
-          }
-          case "bulleted_list_item": {
-            const content = extractRichTextContent(block.bulleted_list_item.rich_text);
-            return content ? { type: "bulleted_list_item", content } : null;
-          }
-          case "numbered_list_item": {
-            const content = extractRichTextContent(block.numbered_list_item.rich_text);
-            return content ? { type: "numbered_list_item", content } : null;
-          }
-          default:
-            return null;
-        }
-      })
-      // Type guard to ensure only non-null blocks with content are included
-      .filter((block): block is { type: string; content: string } =>
-        block !== null && block.content.trim() !== ""
-      );
-
+    // Process all blocks starting at the page level
+    const blockContents = await processBlocks(id);
+    
     return {
       id: pageResponse.id,
       url: pageResponse.url,
@@ -209,22 +268,9 @@ export default async function NotionPageDetail({ params }: { params: { id: strin
 
         {/* Page Content */}
         <article className="prose max-w-none text-gray-800 space-y-4 animate-fade-in-up delay-200">
-          {pageDetails.blocks.map((block, index) => {
-            switch (block.type) {
-              case "heading_1":
-                return <h1 key={index} className="text-3xl font-bold text-gray-900 mt-8 mb-4 border-b pb-2">{block.content}</h1>;
-              case "heading_2":
-                return <h2 key={index} className="text-2xl font-semibold text-gray-800 mt-6 mb-3">{block.content}</h2>;
-              case "heading_3":
-                return <h3 key={index} className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
-              case "bulleted_list_item":
-                return <li key={index} className="list-disc ml-6 text-gray-700">{block.content}</li>;
-              case "numbered_list_item":
-                return <li key={index} className="list-decimal ml-6 text-gray-700">{block.content}</li>;
-              default:
-                return <p key={index} className="text-base leading-relaxed">{block.content}</p>;
-            }
-          })}
+          {pageDetails.blocks.map((block, index) => (
+            <NotionBlockRenderer key={index} block={block} />
+          ))}
         </article>
 
         {/* Page Actions */}
