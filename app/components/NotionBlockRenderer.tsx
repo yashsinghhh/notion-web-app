@@ -1,62 +1,142 @@
 // app/components/NotionBlockRenderer.tsx
 "use client";
 
+import { Fragment, ReactNode } from 'react';
 import NotionToggle from './NotionToggle';
 
 interface BlockProps {
-  block: {
+  blocks: Array<{
     type: string;
     content: string;
     children?: any[];
-  };
+  }>;
 }
 
-export default function NotionBlockRenderer({ block }: BlockProps) {
-  // Render based on block type
-  switch (block.type) {
-    case "paragraph":
-      return <p className="text-base leading-relaxed my-4">{block.content}</p>;
-    case "heading_1":
-      return <h1 className="text-3xl font-bold text-gray-900 mt-8 mb-4 border-b pb-2">{block.content}</h1>;
-    case "heading_2":
-      return <h2 className="text-2xl font-semibold text-gray-800 mt-6 mb-3">{block.content}</h2>;
-    case "heading_3":
-      return <h3 className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
-    case "bulleted_list_item":
+// Helper to check if a block is a numbered list item
+const isNumberedListItem = (block: any) => block.type === "numbered_list_item";
+const isBulletedListItem = (block: any) => block.type === "bulleted_list_item";
+
+export default function NotionBlockRenderer({ blocks }: BlockProps) {
+  const renderBlocks = () => {
+    const result: ReactNode[] = [];
+    let currentNumberedListItems: any[] = [];
+    let currentBulletedListItems: any[] = [];
+    
+    // Helper function to render the current numbered list items
+    const renderNumberedList = () => {
+      if (currentNumberedListItems.length === 0) return null;
       return (
-        <div>
-          <li className="list-disc ml-6 text-gray-700">{block.content}</li>
-          {block.children && block.children.length > 0 && (
-            <div className="ml-8 mt-1">
-              {block.children.map((childBlock, idx) => (
-                <NotionBlockRenderer key={idx} block={childBlock} />
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    case "numbered_list_item":
-      return (
-        <div>
-          <li className="list-decimal ml-6 text-gray-700">{block.content}</li>
-          {block.children && block.children.length > 0 && (
-            <div className="ml-8 mt-1">
-              {block.children.map((childBlock, idx) => (
-                <NotionBlockRenderer key={idx} block={childBlock} />
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    case "toggle":
-      return (
-        <NotionToggle header={block.content}>
-          {block.children && block.children.map((childBlock, idx) => (
-            <NotionBlockRenderer key={idx} block={childBlock} />
+        <ol className="list-decimal ml-6 space-y-2">
+          {currentNumberedListItems.map((item, idx) => (
+            <li key={idx} className="text-gray-700 pl-1">
+              {item.content}
+              {item.children && item.children.length > 0 && (
+                <div className="mt-2">
+                  <NotionBlockRenderer blocks={item.children} />
+                </div>
+              )}
+            </li>
           ))}
-        </NotionToggle>
+        </ol>
       );
-    default:
-      return <p className="text-base leading-relaxed">{block.content}</p>;
-  }
+    };
+    
+    // Helper function to render the current bulleted list items
+    const renderBulletedList = () => {
+      if (currentBulletedListItems.length === 0) return null;
+      return (
+        <ul className="list-disc ml-6 space-y-2">
+          {currentBulletedListItems.map((item, idx) => (
+            <li key={idx} className="text-gray-700 pl-1">
+              {item.content}
+              {item.children && item.children.length > 0 && (
+                <div className="mt-2">
+                  <NotionBlockRenderer blocks={item.children} />
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      );
+    };
+    
+    // Process all blocks
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      
+      // If it's a numbered list item, collect it
+      if (isNumberedListItem(block)) {
+        // If we were collecting bulleted list items, render the list
+        if (currentBulletedListItems.length > 0) {
+          result.push(renderBulletedList());
+          currentBulletedListItems = [];
+        }
+        
+        currentNumberedListItems.push(block);
+      } 
+      // If it's a bulleted list item, collect it
+      else if (isBulletedListItem(block)) {
+        // If we were collecting numbered list items, render the list
+        if (currentNumberedListItems.length > 0) {
+          result.push(renderNumberedList());
+          currentNumberedListItems = [];
+        }
+        
+        currentBulletedListItems.push(block);
+      } 
+      // If it's not a list item
+      else {
+        // Render any collected list items
+        if (currentNumberedListItems.length > 0) {
+          result.push(renderNumberedList());
+          currentNumberedListItems = [];
+        }
+        
+        if (currentBulletedListItems.length > 0) {
+          result.push(renderBulletedList());
+          currentBulletedListItems = [];
+        }
+        
+        // Render the current non-list block
+        result.push(renderBlock(block, i));
+      }
+    }
+    
+    // Don't forget to render any remaining list items
+    if (currentNumberedListItems.length > 0) {
+      result.push(renderNumberedList());
+    }
+    
+    if (currentBulletedListItems.length > 0) {
+      result.push(renderBulletedList());
+    }
+    
+    return result;
+  };
+  
+  // Function to render a single block
+  const renderBlock = (block: any, index: number) => {
+    switch (block.type) {
+      case "paragraph":
+        return <p key={index} className="text-base leading-relaxed my-4">{block.content}</p>;
+      case "heading_1":
+        return <h1 key={index} className="text-3xl font-bold text-gray-900 mt-8 mb-4 border-b pb-2">{block.content}</h1>;
+      case "heading_2":
+        return <h2 key={index} className="text-2xl font-semibold text-gray-800 mt-6 mb-3">{block.content}</h2>;
+      case "heading_3":
+        return <h3 key={index} className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
+      case "toggle":
+        return (
+          <NotionToggle key={index} header={block.content}>
+            {block.children && block.children.length > 0 && (
+              <NotionBlockRenderer blocks={block.children} />
+            )}
+          </NotionToggle>
+        );
+      default:
+        return <p key={index} className="text-base leading-relaxed">{block.content}</p>;
+    }
+  };
+  
+  return <Fragment>{renderBlocks()}</Fragment>;
 }

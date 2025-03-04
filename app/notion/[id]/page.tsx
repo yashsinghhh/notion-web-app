@@ -288,10 +288,8 @@ export default async function NotionPageDetail({ params }: { params: { id: strin
 
         {/* Page Content */}
         <article className="prose max-w-none text-gray-800 space-y-4 animate-fade-in-up delay-200">
-          {pageDetails.blocks.map((block, index) => (
-            <NotionBlockRenderer key={index} block={block} />
-          ))}
-        </article>
+  <NotionBlockRenderer blocks={pageDetails.blocks} />
+</article>
 
         {/* Page Actions */}
         <PageActions pageId={pageDetails.id} notionUrl={pageDetails.url} />
