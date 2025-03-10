@@ -6,11 +6,15 @@ import {
   PartialBlockObjectResponse,
   RichTextItemResponse
 } from '@notionhq/client/build/src/api-endpoints';
+import redisClient from '@/lib/redis';
 
 // Initialize Notion client
 const notion = new Client({
   auth: process.env.NOTION_API_KEY
 });
+
+// Cache expiration (1 hour)
+const CACHE_EXPIRATION = 3600; // seconds
 
 // Helper function to extract page title
 function extractPageTitle(properties: Record<string, any>): string | null {
@@ -91,87 +95,7 @@ async function extractToggleContent(block: BlockObjectResponse): Promise<any> {
   };
 }
 
-// Function to handle numbered list items with children
-async function extractNumberedListItemContent(block: BlockObjectResponse): Promise<any> {
-  if (block.type !== 'numbered_list_item' || !('numbered_list_item' in block)) {
-    return null;
-  }
-  
-  // Get the list item text
-  const itemText = getRichTextContent(block.numbered_list_item.rich_text);
-  
-  // Initialize children array
-  const children = [];
-  
-  // Fetch child blocks if they exist
-  if (block.has_children) {
-    try {
-      const childBlocksResponse = await notion.blocks.children.list({
-        block_id: block.id,
-        page_size: 100
-      });
-      
-      // Process each child block
-      for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
-        const childContent = await extractBlockContent(childBlock);
-        if (childContent) {
-          children.push(childContent);
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching numbered list item children for block ${block.id}:`, error);
-    }
-  }
-  
-  // Return structured numbered list item data
-  return {
-    type: 'numbered_list_item',
-    content: itemText,
-    children: children.length > 0 ? children : undefined
-  };
-}
-
-// Function to handle bulleted list items with children
-async function extractBulletedListItemContent(block: BlockObjectResponse): Promise<any> {
-  if (block.type !== 'bulleted_list_item' || !('bulleted_list_item' in block)) {
-    return null;
-  }
-  
-  // Get the list item text
-  const itemText = getRichTextContent(block.bulleted_list_item.rich_text);
-  
-  // Initialize children array
-  const children = [];
-  
-  // Fetch child blocks if they exist
-  if (block.has_children) {
-    try {
-      const childBlocksResponse = await notion.blocks.children.list({
-        block_id: block.id,
-        page_size: 100
-      });
-      
-      // Process each child block
-      for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
-        const childContent = await extractBlockContent(childBlock);
-        if (childContent) {
-          children.push(childContent);
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching bulleted list item children for block ${block.id}:`, error);
-    }
-  }
-  
-  // Return structured bulleted list item data
-  return {
-    type: 'bulleted_list_item',
-    content: itemText,
-    children: children.length > 0 ? children : undefined
-  };
-}
-
-// Helper function to extract content from different block types
+// Function to handle blocks with potential children
 async function extractBlockContent(block: BlockObjectResponse | PartialBlockObjectResponse): Promise<any> {
   // Handle partial blocks
   if (!('type' in block)) {
@@ -179,71 +103,69 @@ async function extractBlockContent(block: BlockObjectResponse | PartialBlockObje
   }
   
   switch(block.type) {
-    case 'paragraph':
+    case "paragraph": {
       if ('paragraph' in block) {
-        return {
-          type: 'paragraph',
-          content: getRichTextContent(block.paragraph.rich_text)
-        };
+        const content = getRichTextContent(block.paragraph.rich_text);
+        return content ? { type: "paragraph", content } : null;
       }
       break;
-    case 'heading_1':
+    }
+    case "heading_1": {
       if ('heading_1' in block) {
-        return {
-          type: 'heading_1',
-          content: getRichTextContent(block.heading_1.rich_text)
-        };
+        const content = getRichTextContent(block.heading_1.rich_text);
+        return content ? { type: "heading_1", content } : null;
       }
       break;
-    case 'heading_2':
+    }
+    case "heading_2": {
       if ('heading_2' in block) {
-        return {
-          type: 'heading_2',
-          content: getRichTextContent(block.heading_2.rich_text)
-        };
+        const content = getRichTextContent(block.heading_2.rich_text);
+        return content ? { type: "heading_2", content } : null;
       }
       break;
-    case 'heading_3':
+    }
+    case "heading_3": {
       if ('heading_3' in block) {
-        return {
-          type: 'heading_3',
-          content: getRichTextContent(block.heading_3.rich_text)
-        };
+        const content = getRichTextContent(block.heading_3.rich_text);
+        return content ? { type: "heading_3", content } : null;
       }
       break;
-    case 'bulleted_list_item':
+    }
+    case "bulleted_list_item": {
       if ('bulleted_list_item' in block) {
-        // Use the new function for bulleted list items with children
+        const content = getRichTextContent(block.bulleted_list_item.rich_text);
+        
+        // Check for children
         if (block.has_children) {
-          return await extractBulletedListItemContent(block as BlockObjectResponse);
-        } else {
+          const childBlocksResponse = await notion.blocks.children.list({
+            block_id: block.id,
+            page_size: 100
+          });
+          
+          const childContents = [];
+          for (const childBlock of childBlocksResponse.results as BlockObjectResponse[]) {
+            const childContent = await extractBlockContent(childBlock);
+            if (childContent) childContents.push(childContent);
+          }
+          
           return {
-            type: 'bulleted_list_item',
-            content: getRichTextContent(block.bulleted_list_item.rich_text)
+            type: "bulleted_list_item", 
+            content,
+            children: childContents.length > 0 ? childContents : undefined
           };
         }
+        
+        return content ? { type: "bulleted_list_item", content } : null;
       }
       break;
-    case 'numbered_list_item':
-      if ('numbered_list_item' in block) {
-        // Use the new function for numbered list items with children
-        if (block.has_children) {
-          return await extractNumberedListItemContent(block as BlockObjectResponse);
-        } else {
-          return {
-            type: 'numbered_list_item',
-            content: getRichTextContent(block.numbered_list_item.rich_text)
-          };
-        }
-      }
-      break;
-    case 'toggle':
+    }
+    case "toggle": {
       if ('toggle' in block) {
         return await extractToggleContent(block as BlockObjectResponse);
       }
       break;
+    }
     default:
-      // For unsupported block types, return a basic object
       return {
         type: block.type,
         content: 'Unsupported block type: ' + block.type
@@ -253,8 +175,34 @@ async function extractBlockContent(block: BlockObjectResponse | PartialBlockObje
   return null;
 }
 
+// Redis caching helpers
+async function getCachedNotionPages(): Promise<any[] | null> {
+  try {
+    const cachedData = await redisClient.get('notion_pages');
+    return cachedData ? JSON.parse(cachedData) : null;
+  } catch (error) {
+    console.error('Redis cache retrieval error:', error);
+    return null;
+  }
+}
+
+async function cacheNotionPages(pages: any[]): Promise<void> {
+  try {
+    await redisClient.set('notion_pages', JSON.stringify(pages), 'EX', CACHE_EXPIRATION);
+  } catch (error) {
+    console.error('Redis cache setting error:', error);
+  }
+}
+
 export async function GET() {
   try {
+    // First, check Redis cache
+    const cachedPages = await getCachedNotionPages();
+    if (cachedPages) {
+      console.log('Returning cached Notion pages');
+      return NextResponse.json(cachedPages);
+    }
+
     // Replace with your actual Notion database ID
     const databaseId = process.env.NOTION_DATABASE_ID;
 
@@ -313,15 +261,14 @@ export async function GET() {
       // Fetch full page content
       let pageContent = null;
       try {
-        const pageDetails = await notion.pages.retrieve({ 
-          page_id: page.id 
-        });
-
-        // Retrieve page content blocks
-        const blocksResponse = await notion.blocks.children.list({
-          block_id: page.id,
-          page_size: 100 // Adjust as needed
-        });
+        // Fetch page details and content blocks
+        const [pageDetails, blocksResponse] = await Promise.all([
+          notion.pages.retrieve({ page_id: page.id }),
+          notion.blocks.children.list({
+            block_id: page.id,
+            page_size: 100
+          })
+        ]);
 
         // Process blocks with async support
         const blockContentsPromises = blocksResponse.results
@@ -334,7 +281,6 @@ export async function GET() {
               content.content.trim() !== '' : true));
         
         // Generate a simple fullText for search purposes
-        // This is a flattened version of all text content
         const extractFullText = (blocks: any[]): string => {
           return blocks.map(block => {
             if (block.type === 'toggle' && block.children) {
@@ -363,6 +309,9 @@ export async function GET() {
         content: pageContent
       };
     }));
+
+    // Cache the transformed results
+    await cacheNotionPages(transformedResults);
 
     return NextResponse.json(transformedResults);
   } catch (error) {
