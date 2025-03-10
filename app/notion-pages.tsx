@@ -31,14 +31,14 @@ export default function NotionPages() {
     fetchNotionPages();
   }, []);
 
-  async function fetchNotionPages(bypassCache: boolean = false) {
+  async function fetchNotionPages(forceUpdate: boolean = false) {
     try {
       setIsLoading(true);
       setError(null);
       
-      // Determine the fetch URL based on cache bypass
-      const url = bypassCache 
-        ? '/api/notion?bypass_cache=true' 
+      // Determine the fetch URL based on force update
+      const url = forceUpdate 
+        ? '/api/notion?force_update=true' 
         : '/api/notion';
 
       const response = await fetch(url);

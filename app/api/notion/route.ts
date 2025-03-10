@@ -183,18 +183,19 @@ async function getCachedNotionPages(): Promise<any[] | null> {
 async function cacheNotionPages(pages: any[]): Promise<void> {
   try {
     await redisClient.set('notion_pages', JSON.stringify(pages), 'EX', CACHE_EXPIRATION);
+    console.log(`Cached ${pages.length} Notion pages`);
   } catch (error) {
     console.error('Redis cache setting error:', error);
   }
 }
 
 export async function GET(request: NextRequest) {
-  // Check if cache should be bypassed
-  const bypassCache = request.nextUrl.searchParams.get('bypass_cache') === 'true';
+  // Check if cache should be force updated
+  const forceUpdate = request.nextUrl.searchParams.get('force_update') === 'true';
 
   try {
-    // If not bypassing cache, check Redis first
-    if (!bypassCache) {
+    // If not forcing update, check Redis first
+    if (!forceUpdate) {
       const cachedPages = await getCachedNotionPages();
       if (cachedPages) {
         console.log('Returning cached Notion pages');
@@ -307,10 +308,8 @@ export async function GET(request: NextRequest) {
       };
     }));
 
-    // Only cache if not explicitly bypassing
-    if (!bypassCache) {
-      await cacheNotionPages(transformedResults);
-    }
+    // Always update the cache
+    await cacheNotionPages(transformedResults);
 
     return NextResponse.json(transformedResults);
   } catch (error) {
