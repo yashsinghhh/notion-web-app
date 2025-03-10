@@ -1,12 +1,12 @@
 // app/api/notion/route.ts
 import { Client } from '@notionhq/client';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import redisClient from '@/lib/redis';
 import { 
   BlockObjectResponse, 
   PartialBlockObjectResponse,
   RichTextItemResponse
 } from '@notionhq/client/build/src/api-endpoints';
-import redisClient from '@/lib/redis';
 
 // Initialize Notion client
 const notion = new Client({
@@ -51,7 +51,7 @@ function getRichTextContent(richTextArray: RichTextItemResponse[] | undefined): 
   return richTextArray.map(text => text.plain_text || '').join('');
 }
 
-// Recursive function to extract text from toggle blocks
+// Helper function to extract text from toggle blocks
 async function extractToggleContent(block: BlockObjectResponse): Promise<any> {
   // Type check to ensure we're dealing with a toggle block
   if (block.type !== 'toggle' || !('toggle' in block)) {
@@ -95,7 +95,7 @@ async function extractToggleContent(block: BlockObjectResponse): Promise<any> {
   };
 }
 
-// Function to handle blocks with potential children
+// Helper function to extract content from different block types
 async function extractBlockContent(block: BlockObjectResponse | PartialBlockObjectResponse): Promise<any> {
   // Handle partial blocks
   if (!('type' in block)) {
@@ -103,35 +103,31 @@ async function extractBlockContent(block: BlockObjectResponse | PartialBlockObje
   }
   
   switch(block.type) {
-    case "paragraph": {
+    case "paragraph":
       if ('paragraph' in block) {
         const content = getRichTextContent(block.paragraph.rich_text);
         return content ? { type: "paragraph", content } : null;
       }
       break;
-    }
-    case "heading_1": {
+    case "heading_1":
       if ('heading_1' in block) {
         const content = getRichTextContent(block.heading_1.rich_text);
         return content ? { type: "heading_1", content } : null;
       }
       break;
-    }
-    case "heading_2": {
+    case "heading_2":
       if ('heading_2' in block) {
         const content = getRichTextContent(block.heading_2.rich_text);
         return content ? { type: "heading_2", content } : null;
       }
       break;
-    }
-    case "heading_3": {
+    case "heading_3":
       if ('heading_3' in block) {
         const content = getRichTextContent(block.heading_3.rich_text);
         return content ? { type: "heading_3", content } : null;
       }
       break;
-    }
-    case "bulleted_list_item": {
+    case "bulleted_list_item":
       if ('bulleted_list_item' in block) {
         const content = getRichTextContent(block.bulleted_list_item.rich_text);
         
@@ -158,13 +154,11 @@ async function extractBlockContent(block: BlockObjectResponse | PartialBlockObje
         return content ? { type: "bulleted_list_item", content } : null;
       }
       break;
-    }
-    case "toggle": {
+    case "toggle":
       if ('toggle' in block) {
         return await extractToggleContent(block as BlockObjectResponse);
       }
       break;
-    }
     default:
       return {
         type: block.type,
@@ -194,13 +188,18 @@ async function cacheNotionPages(pages: any[]): Promise<void> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Check if cache should be bypassed
+  const bypassCache = request.nextUrl.searchParams.get('bypass_cache') === 'true';
+
   try {
-    // First, check Redis cache
-    const cachedPages = await getCachedNotionPages();
-    if (cachedPages) {
-      console.log('Returning cached Notion pages');
-      return NextResponse.json(cachedPages);
+    // If not bypassing cache, check Redis first
+    if (!bypassCache) {
+      const cachedPages = await getCachedNotionPages();
+      if (cachedPages) {
+        console.log('Returning cached Notion pages');
+        return NextResponse.json(cachedPages);
+      }
     }
 
     // Replace with your actual Notion database ID
@@ -261,7 +260,6 @@ export async function GET() {
       // Fetch full page content
       let pageContent = null;
       try {
-        // Fetch page details and content blocks
         const [pageDetails, blocksResponse] = await Promise.all([
           notion.pages.retrieve({ page_id: page.id }),
           notion.blocks.children.list({
@@ -270,11 +268,10 @@ export async function GET() {
           })
         ]);
 
-        // Process blocks with async support
+        // Process blocks
         const blockContentsPromises = blocksResponse.results
           .map(block => extractBlockContent(block as BlockObjectResponse));
         
-        // Wait for all block processing to complete
         const blockContents = (await Promise.all(blockContentsPromises))
           .filter(content => content !== null && 
             (typeof content.content === 'string' ? 
@@ -310,8 +307,10 @@ export async function GET() {
       };
     }));
 
-    // Cache the transformed results
-    await cacheNotionPages(transformedResults);
+    // Only cache if not explicitly bypassing
+    if (!bypassCache) {
+      await cacheNotionPages(transformedResults);
+    }
 
     return NextResponse.json(transformedResults);
   } catch (error) {
