@@ -3,6 +3,7 @@
 
 import { Fragment, ReactNode } from 'react';
 import NotionToggle from './NotionToggle';
+import { v4 as uuidv4 } from 'uuid';
 
 interface BlockProps {
   blocks: Array<{
@@ -26,9 +27,12 @@ export default function NotionBlockRenderer({ blocks }: BlockProps) {
     const renderNumberedList = () => {
       if (currentNumberedListItems.length === 0) return null;
       return (
-        <ol className="list-decimal ml-6 space-y-2">
+        <ol key={`numbered-list-${uuidv4()}`} className="list-decimal ml-6 space-y-2">
           {currentNumberedListItems.map((item, idx) => (
-            <li key={idx} className="text-gray-700 pl-1">
+            <li 
+              key={`numbered-list-item-${uuidv4()}`} 
+              className="text-gray-700 pl-1"
+            >
               {item.content}
               {item.children && item.children.length > 0 && (
                 <div className="mt-2">
@@ -45,9 +49,12 @@ export default function NotionBlockRenderer({ blocks }: BlockProps) {
     const renderBulletedList = () => {
       if (currentBulletedListItems.length === 0) return null;
       return (
-        <ul className="list-disc ml-6 space-y-2">
+        <ul key={`bulleted-list-${uuidv4()}`} className="list-disc ml-6 space-y-2">
           {currentBulletedListItems.map((item, idx) => (
-            <li key={idx} className="text-gray-700 pl-1">
+            <li 
+              key={`bulleted-list-item-${uuidv4()}`} 
+              className="text-gray-700 pl-1"
+            >
               {item.content}
               {item.children && item.children.length > 0 && (
                 <div className="mt-2">
@@ -116,25 +123,27 @@ export default function NotionBlockRenderer({ blocks }: BlockProps) {
   
   // Function to render a single block
   const renderBlock = (block: any, index: number) => {
+    const key = `block-${block.type}-${uuidv4()}`;
+    
     switch (block.type) {
       case "paragraph":
-        return <p key={index} className="text-base leading-relaxed my-4">{block.content}</p>;
+        return <p key={key} className="text-base leading-relaxed my-4">{block.content}</p>;
       case "heading_1":
-        return <h1 key={index} className="text-3xl font-bold text-gray-900 mt-8 mb-4 border-b pb-2">{block.content}</h1>;
+        return <h1 key={key} className="text-3xl font-bold text-gray-900 mt-8 mb-4 border-b pb-2">{block.content}</h1>;
       case "heading_2":
-        return <h2 key={index} className="text-2xl font-semibold text-gray-800 mt-6 mb-3">{block.content}</h2>;
+        return <h2 key={key} className="text-2xl font-semibold text-gray-800 mt-6 mb-3">{block.content}</h2>;
       case "heading_3":
-        return <h3 key={index} className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
+        return <h3 key={key} className="text-xl font-medium text-gray-700 mt-4 mb-2">{block.content}</h3>;
       case "toggle":
         return (
-          <NotionToggle key={index} header={block.content}>
+          <NotionToggle key={key} header={block.content}>
             {block.children && block.children.length > 0 && (
               <NotionBlockRenderer blocks={block.children} />
             )}
           </NotionToggle>
         );
       default:
-        return <p key={index} className="text-base leading-relaxed">{block.content}</p>;
+        return <p key={key} className="text-base leading-relaxed">{block.content}</p>;
     }
   };
   

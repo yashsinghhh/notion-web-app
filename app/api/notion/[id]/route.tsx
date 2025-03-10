@@ -16,6 +16,13 @@ const notion = new Client({
 // Cache expiration (1 hour)
 const CACHE_EXPIRATION = 3600; // seconds
 
+// Define a type for processed blocks
+type ProcessedBlock = {
+  type: string;
+  content: string;
+  children?: ProcessedBlock[];
+};
+
 // Helper function to extract property value
 function extractPropertyValue(property: any): any {
   switch (property.type) {
@@ -43,150 +50,86 @@ function extractRichTextContent(richTexts: RichTextItemResponse[]): string {
   return richTexts.map((text: RichTextItemResponse) => text.plain_text || '').join('').trim();
 }
 
-// Define a type for processed blocks
-type ProcessedBlock = {
-  type: string;
-  content: string;
-  children?: ProcessedBlock[];
-};
-
-// Batch fetch children for blocks
-async function batchFetchBlockChildren(
-  blocks: BlockObjectResponse[], 
-  maxDepth: number = 3
-): Promise<Record<string, ProcessedBlock[]>> {
-  // Filter blocks with children
-  const blocksWithChildren = blocks.filter(block => block.has_children);
-  
-  // Limit batch size to prevent overwhelming the API
-  const BATCH_SIZE = 10;
-  const childrenMap: Record<string, ProcessedBlock[]> = {};
-
-  // Process in batches
-  for (let i = 0; i < blocksWithChildren.length; i += BATCH_SIZE) {
-    const batchBlocks = blocksWithChildren.slice(i, i + BATCH_SIZE);
-    
-    // Fetch children for this batch in parallel
-    const batchChildrenPromises = batchBlocks.map(async (block) => {
-      try {
-        const childBlocksResponse = await notion.blocks.children.list({
-          block_id: block.id,
-          page_size: 100,
-        });
-
-        // Process these child blocks
-        return {
-          parentId: block.id,
-          children: await processBlocksFromResponse(childBlocksResponse.results as BlockObjectResponse[], maxDepth - 1)
-        };
-      } catch (error) {
-        console.error(`Error fetching children for block ${block.id}:`, error);
-        return null;
-      }
-    });
-
-    // Wait for batch to complete
-    const batchChildren = await Promise.all(batchChildrenPromises);
-    
-    // Populate children map
-    batchChildren.forEach(result => {
-      if (result && result.children.length > 0) {
-        childrenMap[result.parentId] = result.children;
-      }
-    });
+// Extract block content based on block type
+function extractBlockContent(block: BlockObjectResponse): string {
+  switch(block.type) {
+    case 'paragraph':
+      return extractRichTextContent(block.paragraph.rich_text);
+    case 'heading_1':
+      return extractRichTextContent(block.heading_1.rich_text);
+    case 'heading_2':
+      return extractRichTextContent(block.heading_2.rich_text);
+    case 'heading_3':
+      return extractRichTextContent(block.heading_3.rich_text);
+    case 'bulleted_list_item':
+      return extractRichTextContent(block.bulleted_list_item.rich_text);
+    case 'numbered_list_item':
+      return extractRichTextContent(block.numbered_list_item.rich_text);
+    case 'toggle':
+      return extractRichTextContent(block.toggle.rich_text);
+    default:
+      return '';
   }
-
-  return childrenMap;
 }
 
-// Process blocks from a response
-async function processBlocksFromResponse(
-  blocks: BlockObjectResponse[], 
-  maxDepth: number = 3,
-  childrenMap?: Record<string, ProcessedBlock[]>
+// Batch fetch and process blocks with depth limitation
+async function processBlocks(
+  pageId: string, 
+  maxDepth: number = 3
 ): Promise<ProcessedBlock[]> {
-  const processedBlocks: ProcessedBlock[] = [];
-  
-  for (const block of blocks) {
-    let processedBlock: ProcessedBlock | null = null;
-    
-    switch(block.type) {
-      case 'paragraph':
-      case 'heading_1':
-      case 'heading_2':
-      case 'heading_3':
-      case 'bulleted_list_item':
-      case 'toggle': {
-        let content = '';
-        switch(block.type) {
-          case 'paragraph':
-            content = extractRichTextContent(block.paragraph.rich_text);
-            break;
-          case 'heading_1':
-            content = extractRichTextContent(block.heading_1.rich_text);
-            break;
-          case 'heading_2':
-            content = extractRichTextContent(block.heading_2.rich_text);
-            break;
-          case 'heading_3':
-            content = extractRichTextContent(block.heading_3.rich_text);
-            break;
-          case 'bulleted_list_item':
-            content = extractRichTextContent(block.bulleted_list_item.rich_text);
-            break;
-          case 'toggle':
-            content = extractRichTextContent(block.toggle.rich_text);
-            break;
-        }
+  // Fetch initial blocks
+  const initialBlocksResponse = await notion.blocks.children.list({
+    block_id: pageId,
+    page_size: 100, // Notion's max page size
+  });
 
-        // Only process if content exists and we haven't exceeded max depth
-        if (content && maxDepth > 0) {
-          processedBlock = { 
-            type: block.type, 
-            content 
-          };
+  // Recursive processing function
+  const processBlocksRecursive = async (
+    blocks: BlockObjectResponse[], 
+    currentDepth: number
+  ): Promise<ProcessedBlock[]> => {
+    const processedBlocks: ProcessedBlock[] = [];
 
-          // Add children if available
-          if (block.has_children && childrenMap && childrenMap[block.id]) {
-            processedBlock.children = childrenMap[block.id];
+    for (const block of blocks) {
+      // Extract content based on block type
+      const content = extractBlockContent(block);
+
+      if (content && currentDepth > 0) {
+        const processedBlock: ProcessedBlock = { 
+          type: block.type, 
+          content 
+        };
+
+        // Fetch and process children if depth allows
+        if (block.has_children && currentDepth > 1) {
+          try {
+            const childBlocksResponse = await notion.blocks.children.list({
+              block_id: block.id,
+              page_size: 100 // Fetch all child blocks
+            });
+
+            // Recursively process children with reduced depth
+            processedBlock.children = await processBlocksRecursive(
+              childBlocksResponse.results as BlockObjectResponse[], 
+              currentDepth - 1
+            );
+          } catch (error) {
+            console.error(`Error fetching children for block ${block.id}:`, error);
           }
         }
-        break;
+
+        processedBlocks.push(processedBlock);
       }
     }
-    
-    if (processedBlock) {
-      processedBlocks.push(processedBlock);
-    }
-  }
-  
-  return processedBlocks;
-}
 
-// Main block processing function
-async function processBlocks(pageId: string): Promise<ProcessedBlock[]> {
-  try {
-    // Fetch initial blocks
-    const blocksResponse = await notion.blocks.children.list({
-      block_id: pageId,
-      page_size: 100,
-    });
+    return processedBlocks;
+  };
 
-    // Batch fetch children for all blocks with children
-    const childrenMap = await batchFetchBlockChildren(
-      blocksResponse.results as BlockObjectResponse[]
-    );
-
-    // Process blocks with batch-fetched children
-    return await processBlocksFromResponse(
-      blocksResponse.results as BlockObjectResponse[],
-      3,
-      childrenMap
-    );
-  } catch (error) {
-    console.error(`Error processing blocks for ${pageId}:`, error);
-    return [];
-  }
+  // Start processing with maximum depth
+  return processBlocksRecursive(
+    initialBlocksResponse.results as BlockObjectResponse[], 
+    maxDepth
+  );
 }
 
 // Generate a cache key for a specific page
@@ -214,6 +157,7 @@ async function cachePage(pageId: string, pageData: any): Promise<void> {
       'EX', 
       CACHE_EXPIRATION
     );
+    console.log(`Cached page ${pageId}`);
   } catch (error) {
     console.error('Redis cache setting error:', error);
   }
@@ -253,7 +197,7 @@ export async function GET(
       properties[key] = extractPropertyValue(prop);
     });
 
-    // Process all blocks starting at the page level
+    // Process all blocks with batch fetching
     const blockContents = await processBlocks(pageId);
 
     // Prepare full page data

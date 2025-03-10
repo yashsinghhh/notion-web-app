@@ -198,7 +198,7 @@ async function fetchNotionPage(id: string): Promise<NotionPageDetails | null> {
 
 export default async function NotionPageDetail({ params }: { params: { id: string } }) {
   // Validate params
-  const pageId = params.id;
+  const pageId = await params.id;
 
   if (!pageId) {
     return (
